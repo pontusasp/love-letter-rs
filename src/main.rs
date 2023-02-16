@@ -175,7 +175,7 @@ struct State {
     deck: Vec<Card>,
     discard: Vec<Vec<Card>>,
     players: Vec<String>,
-    hands: Vec<Card>,
+    hands: Vec<Option<Card>>,
     tokens: Vec<i32>,
     round: i32,
     turn: usize,
@@ -247,6 +247,7 @@ enum PlayError {
     InvalidGuess,
     InvalidTargetPlayer,
     InvalidTargetHand,
+    InvalidHand,
 }
 enum RoundStatus {
     Continue,
@@ -254,22 +255,127 @@ enum RoundStatus {
 }
 type TurnResult = Result<RoundStatus, PlayError>;
 
-fn play_card(state: &mut State, card: &Card) -> TurnResult {
-    match card {
-        Card::Alice => {
-            println!("You are out.");
-            state.hands[state.turn] = Card::Nobody;
-            Ok(RoundStatus::End)
-        },
-        _ => { // Temporary arm
-            println!("You played {:?}", card);
-            Ok(RoundStatus::Continue)
+fn play_target(state: State) -> usize {
+    let mut target: usize = 0;
+    loop {
+        print!("Target player: ");
+        target = read();
+
+        // Check if target is valid
+        if target < 1 || target > state.players.len() {
+            println!("That is not a valid player.");
+            continue;
         }
+
+        // Check if target is out
+        if state.hands[target - 1].is_none() {
+            println!("That player is out.");
+            continue;
+        }
+
+        // Check if target is self
+        if target - 1 == state.turn {
+            println!("You cannot target yourself.");
+            continue;
+        }
+
+        // Check if target is protected
+        if let Some(Card::Nobody) == state.hands[target - 1] {
+            println!("That player is protected.");
+            continue;
+        }
+
+        break;
+    }
+
+    
+    target - 1
+}
+
+fn play_card(state: &mut State, card: &Card) -> TurnResult {
+    if let Some(hand) = state.hands[state.turn].clone() {
+        // Implement card effects
+        match card {
+            Card::Alice => {
+                println!("You are out.");
+                state.hands[state.turn] = None;
+                Ok(RoundStatus::Continue)
+            },
+            Card::RedQueen => {
+                match hand {
+                    Card::Time => {
+                        Err(PlayError::InvalidCard)
+                    },
+                    Card::Executioner => {
+                        Err(PlayError::InvalidCard)
+                    },
+                    _ => {
+                        println!("You played the Red Queen.");
+                        Ok(RoundStatus::Continue)
+                    }
+                }
+            },
+            Card::Time => {
+                println!("Who would you like to target?");
+                let target = play_target(state);
+                println!("You swap hands with {}.", state.players[target]);
+                let temp = state.hands[state.turn];
+                state.hands[state.turn] = state.hands[target];
+                state.hands[target] = temp;
+                Ok(RoundStatus::Continue)
+            },
+            Card::Executioner => {
+                println!("You draw two cards.");
+                let card1 = state.deck.pop().unwrap();
+                let card2 = state.deck.pop().unwrap();
+                println!("You drew:\n1. {:?}\n2. {:?}.", card1.to_string(), card2.to_string());
+                println!("Which card would you like to keep?");
+                let mut keep: i32 = 0;
+                loop {
+                    keep = read();
+                    if keep == 1 || keep == 2 {
+                        break;
+                    } else {
+                        println!("That is not a valid card.");
+                    }
+                }
+                if keep == 1 {
+                    state.hands[state.turn] = Some(card1);
+                } else {
+                    state.hands[state.turn] = Some(card2);
+                }
+                println!("You will now place the following cards at the bottom of the deck:\n1. {:?}\n2. {:?}", card1.to_string(), card2.to_string());
+                println!("Which order would you like to place them in? (1 or 2):\n1. {:?} on top of {:?}\n2. {:?} on top of {:?}", card1.name(), card2.name(), card2.name(), card1.name());
+                print!(": ");
+                let mut order: i32 = 0;
+                loop {
+                    order = read();
+                    if order == 1 || order == 2 {
+                        break;
+                    } else {
+                        println!("That is not a valid order.");
+                    }
+                }
+                
+                // Place cards at bottom of deck
+                if order == 1 {
+                    state.deck.insert(0, card1);
+                    state.deck.insert(0, card2);
+                } else {
+                    state.deck.insert(0, card2);
+                    state.deck.insert(0, card1);
+                }
+                println!("You placed the cards at the bottom of the deck.");
+                Ok(RoundStatus::Continue)
+            },
+        }
+    } else {
+        return Err(PlayError::InvalidHand);
     }
 }
 
 fn play_turn(state: &mut State) -> RoundStatus {
-    println!("================= {} =================", state.players[state.turn]);
+    println!("\n\n================= {} =================", state.players[state.turn]);
     println!("Round {}", state.round);
     println!("Turn {}", state.turn + 1);
     println!("Discard: {:?}", state.discard);
@@ -327,7 +433,7 @@ fn play_turn(state: &mut State) -> RoundStatus {
         state.turn = 0;
         state.round += 1;
     }
-    println!("==========================================");
+    println!("==========================================\n\n");
     RoundStatus::Continue
 }
 
