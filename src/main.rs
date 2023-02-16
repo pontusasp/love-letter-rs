@@ -368,6 +368,20 @@ fn play_card(state: &mut State, card: &Card) -> TurnResult {
                 println!("You placed the cards at the bottom of the deck.");
                 Ok(RoundStatus::Continue)
             },
+            Card::KnaveOfHearts => {
+                println!("Who would you like to target?");
+                let target = play_target(state);
+                
+                // Makes target discard a card and draw a new one
+                println!("{} discards their hand.", state.players[target]);
+                let hand = state.hands[target].unwrap();
+                state.discard[target].push(hand);
+                state.hands[target] = None;
+                let card = state.deck.pop().unwrap();
+                println!("{} draws a card.", state.players[target]);
+                state.hands[target] = Some(card);
+                Ok(RoundStatus::Continue)
+            },
         }
     } else {
         return Err(PlayError::InvalidHand);
