@@ -135,6 +135,21 @@ impl Card {
     }
 }
 
+fn list_cards() -> Vec<Card> {
+    let mut cards: Vec<Card> = Vec::new();
+    cards.push(Card::Alice);
+    cards.push(Card::RedQueen);
+    cards.push(Card::Time);
+    cards.push(Card::Executioner);
+    cards.push(Card::KnaveOfHearts);
+    cards.push(Card::Nobody);
+    cards.push(Card::Tweedies);
+    cards.push(Card::Wilkins);
+    cards.push(Card::Guard);
+    cards.push(Card::Dormouse);
+    cards
+}
+
 fn create_deck() -> Vec<Card> {
     let mut deck: Vec<Card> = Vec::new();
     for _ in 0..Card::Alice.count() {
@@ -179,6 +194,7 @@ struct State {
     tokens: Vec<i32>,
     round: i32,
     turn: usize,
+    dormouse: Option<usize>,
 }
 
 fn setup() -> State {
@@ -237,6 +253,7 @@ fn setup() -> State {
         tokens: vec![0, 0, 0, 0],
         round: 1,
         turn: 0,
+        dormouse: None,
     };
     state
 }
@@ -280,7 +297,7 @@ fn play_target(state: State) -> usize {
         }
 
         // Check if target is protected
-        if let Some(Card::Nobody) == state.hands[target - 1] {
+        if let Some(Card::Nobody) == state.discard[target - 1].unwrap_or(None) {
             println!("That player is protected.");
             continue;
         }
@@ -382,6 +399,67 @@ fn play_card(state: &mut State, card: &Card) -> TurnResult {
                 state.hands[target] = Some(card);
                 Ok(RoundStatus::Continue)
             },
+            Card::Nobody => {
+                println!("You are protected.");
+                Ok(RoundStatus::Continue)
+            },
+            Card::Tweedies => {
+                println!("Who would you like to target?");
+                let target = play_target(state);
+                println!("You compare hands with {}.", state.players[target]);
+                let your_score = state.hands[state.turn].unwrap().score();
+                let their_score = state.hands[target].unwrap().score();
+                if your_score > their_score {
+                    println!("You win.");
+                    state.discard[target].push(state.hands[target].unwrap());
+                    state.hands[target] = None;
+                } else if your_score < their_score {
+                    println!("You lose.");
+                    state.discard[state.turn].push(state.hands[state.turn].unwrap());
+                    state.hands[state.turn] = None;
+                } else {
+                    println!("You tie.");
+                }
+                Ok(RoundStatus::Continue)
+            },
+            Card::Wilkins => {
+                println!("Who would you like to target?");
+                let target = play_target(state);
+                println!("{}'s hand is:\n{}", state.players[target], state.hands[target].unwrap().to_string()); 
+            },
+            Card::Guard => {
+                println!("Who would you like to target?");
+                let target = play_target(state);
+                println!("What card would you like to guess?");
+                
+                // List all cards except the Guard
+                let mut i = 0;
+                for card in &state.deck {
+                    if card != &Card::Guard {
+                        println!("{}. {:?}", i + 1, card.to_string());
+                        i += 1;
+                    }
+                }
+
+                // Get guess
+                print!(": ");
+                let mut guess: i32 = 0;
+                loop {
+                    guess = read();
+                    if guess > 0 && guess <= i {
+                        break;
+                    } else {
+                        println!("That is not a valid card.");
+                    }
+                }
+            },
+            Card::Dormouse => {
+                if let Some(player) = state.dormouse {
+                    println!("You discarded the second Dormouse, nor you or {} will be awarded a token.", state.players[player]);
+                } else {
+                    println!("You discarded the first Dormouse.");
+                }
+            }
         }
     } else {
         return Err(PlayError::InvalidHand);
