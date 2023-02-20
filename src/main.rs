@@ -322,6 +322,7 @@ enum PlayError {
 }
 enum RoundStatus {
     Continue,
+    Skip,
     Retry,
     TieBreaker,
     End,
@@ -405,7 +406,7 @@ fn play_target(state: State, card: &Card) -> Target {
         }
 
         // Check if target is out
-        if state.out.contains(&target) {
+        if state.out.contains(&(target - 1)) {
             println!("That player is out.");
             continue;
         }
@@ -554,8 +555,8 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                                 state.out.push(target);
                             } else {
                                 let card = state.deck.pop();
-                                println!("{} draws a card.", state.players[target]);
                                 if let Some(card) = card {
+                                    println!("{} draws a card.", state.players[target]);
                                     state.hands[target] = Some(card);
                                 } else {
                                     println!("{} has no cards left to draw and is out.", state.players[target]);
@@ -579,7 +580,7 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                             Ok(RoundStatus::Continue)
                         },
                         Target::Player(target) => {
-                            println!("You compare hands with {}.", state.players[target]);
+                            println!("You compare hands with {} who has a {}.", state.players[target], state.hands[target].unwrap().name());
                             let your_score = state.hands[state.turn].unwrap().value();
                             let their_score = state.hands[target].unwrap().value();
                             if your_score > their_score {
@@ -687,7 +688,7 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
 
     // Check if player is out
     if state_.out.contains(&state_.turn) {
-        return (RoundStatus::Continue, state_);
+        return (RoundStatus::Skip, state_);
     }
 
     // Check if there is cards in the deck
@@ -703,9 +704,17 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
     println!("Discard piles:");
     for (i, player) in state.players.iter().enumerate() {
         if state.discard[i].len() == 0 {
-            print!("\t{}. {}: ", i + 1, player);
+            if state.out.contains(&i) {
+                print!("\t{}. {} (Out): ", i + 1, player);
+            } else {
+                print!("\t{}. {}: ", i + 1, player);
+            }
         } else {
-            print!("\t{}. {}: {}", i + 1, player, state.discard[i][0].name());
+            if state.out.contains(&i) {
+                print!("\t{}. {} (Out): {}", i + 1, player, state.discard[i][0].name());
+            } else {
+                print!("\t{}. {}: {}", i + 1, player, state.discard[i][0].name());
+            }
             for card in state.discard[i].iter().skip(1) {
                 print!(", {}", card.name());
             }
@@ -748,6 +757,7 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
         if let Ok(round_status) = turn_result.0 {
             match round_status {
                 RoundStatus::Continue => break,
+                RoundStatus::Skip => return (RoundStatus::Skip, state_),
                 RoundStatus::Retry => return play_turn(state_),
                 RoundStatus::TieBreaker => return (RoundStatus::TieBreaker, state),
                 RoundStatus::End => return (RoundStatus::End, state),
@@ -826,9 +836,11 @@ fn main() {
                     }
                     continue;
                 },
-                RoundStatus::Retry => {
-                    println!("Invalid choice. Try again.");
+                RoundStatus::Skip => {
                     continue;
+                },
+                RoundStatus::Retry => {
+                    panic!("Retry should not be returned from play_turn");
                 },
                 RoundStatus::TieBreaker => {
                     state = play_tie_breaker(state);
