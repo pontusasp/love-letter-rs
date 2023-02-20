@@ -52,7 +52,7 @@ enum Card {
     RedQueen, // 8 - (1) Must be discarded if you have (7) Time or (5) Knave of Hearts in your hand
     Time, // 7 - (1) Trade hands with another player.
     Executioner, // 6 - (2) Draw 2 cards, pick one and place 2 cards on the bottom of the deck.
-    KnaveOfHearts, // 5 - (2) Discard another player's hand and make them draw a new card.
+    KnaveOfHearts, // 5 - (2) Discard a player's hand (including your own) and make them draw a new card.
     Nobody, // 4 - (2) Protection until your next turn.
     Tweedies, // 3 - (2) Compare hands with another player. Lowest hand is out.
     Wilkins, // 2 - (2) Look at another player's hand.
@@ -113,7 +113,7 @@ impl Card {
             Card::RedQueen => "Must be discarded if you have (6) or (7) in your hand.".to_string(),
             Card::Time => "Trade hands with another player.".to_string(),
             Card::Executioner => "Draw 2 cards, pick one and place 2 cards on the bottom of the deck.".to_string(),
-            Card::KnaveOfHearts => "Discard another player's hand and make them draw a new card.".to_string(),
+            Card::KnaveOfHearts => "Discard a player's hand (including your own) and make them draw a new card.".to_string(),
             Card::Nobody => "Protection until your next turn.".to_string(),
             Card::Tweedies => "Compare hands with another player. Lowest hand is out.".to_string(),
             Card::Wilkins => "Look at another player's hand.".to_string(),
@@ -124,6 +124,35 @@ impl Card {
 
     fn to_string(&self) -> String {
         format!("{} - {} (x{}): {}", self.value(), self.name(), self.count(), self.description())
+    }
+    
+    fn targetting(&self) -> bool {
+        match self {
+            Card::Alice => false,
+            Card::RedQueen => false,
+            Card::Time => true,
+            Card::Executioner => false,
+            Card::KnaveOfHearts => true,
+            Card::Nobody => false,
+            Card::Tweedies => true,
+            Card::Wilkins => true,
+            Card::Guard => true,
+            Card::Dormouse => false,
+        }
+    }
+
+    fn can_target_self(&self) -> bool {
+        match self {
+            Card::KnaveOfHearts => true,
+            _ => false,
+        }
+    }
+
+    fn protects(&self) -> bool {
+        match self {
+            Card::Nobody => true,
+            _ => false,
+        }
     }
 }
 
@@ -177,6 +206,10 @@ fn create_deck() -> Vec<Card> {
     deck
 }
 
+fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H");
+}
+
 #[derive(Debug, Clone)]
 struct State {
     deck: Vec<Card>,
@@ -192,7 +225,7 @@ struct State {
 
 fn setup(last_state: Option<State>) -> State {
     let (mut deck, mut discard, mut players, out, mut hands, mut tokens, round, turn, dormouse) = match last_state {
-        Some(state) => (create_deck(), Vec::new(), state.players, Vec::new(), Vec::new(), state.tokens, state.round, 0, None::<usize>),
+        Some(ref state) => (create_deck(), Vec::new(), state.players.clone(), Vec::new(), Vec::new(), state.tokens.clone(), state.round.clone(), 0, None::<usize>),
         None => (create_deck(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), 1, 0, None),
     };
 
@@ -202,7 +235,7 @@ fn setup(last_state: Option<State>) -> State {
         let max_players: i32 = 6;
         println!("How many players are there?");
         print!(": ");
-        let player_count: i32 = read!();
+        let mut player_count: i32 = read!();
         while player_count < 2 || player_count > max_players  {
             print!("{} is not a valid number of players. Must be between 2 and {}. Try again: ", player_count, max_players);
             player_count = read!();
@@ -275,14 +308,84 @@ enum RoundStatus {
 }
 type TurnResult = Result<RoundStatus, PlayError>;
 
-fn play_target(state: State) -> Option<usize> {
-    println!("Who would you like to target?");
+enum Target {
+    Player(usize),
+    None,
+    Cancel,
+}
+
+impl Target {
+    fn is_player(&self) -> bool {
+        match self {
+            Target::Player(_) => true,
+            _ => false,
+        }
+    }
+    fn is_none(&self) -> bool {
+        match self {
+            Target::None => true,
+            _ => false,
+        }
+    }
+    fn cancelled(&self) -> bool {
+        match self {
+            Target::Cancel => true,
+            _ => false,
+        }
+    }
+}
+
+fn no_possible_play(state: &State, card: &Card) -> bool {
+    let hand = state.hands[state.turn].unwrap();
+    let card_targetting = card.targetting() && !card.can_target_self();
+    let hand_targetting = hand.targetting() && !hand.can_target_self();
+    if card_targetting && hand_targetting {
+        // Check if all players are protected
+        let mut all_protected = true;
+        for i in 0..state.players.len() {
+            if !state.out.contains(&i) && (state.discard[i].len() == 0 || !state.discard[i].last().unwrap().protects()) && i != state.turn {
+                all_protected = false;
+                break;
+            }
+        }
+        all_protected
+    } else {
+        false
+    }
+}
+
+
+fn play_target(state: State, card: &Card) -> Target {
+    // Check if both cards player could play needs a target that is not self
+    let all_protected = no_possible_play(&state, card);
+
+    if all_protected {
+        println!("All players are protected.");
+    } else {
+        println!("Who would you like to target?");
+    }
 
     // List players
     println!("0: Cancel.");
-    for i in 0..state.players.len() {
-        if state.hands[i].is_some() {
-            println!("{}: {}", i + 1, state.players[i]);
+    if all_protected == false {
+        for i in 0..state.players.len() {
+            if state.hands[i].is_some() {
+                println!("{}: {}", i + 1, state.players[i]);
+            }
+        }
+    } else {
+        println!("1: Discard without any target.");
+        loop {
+            print!(": ");
+            let target = read!();
+            match target {
+                0 => return Target::Cancel,
+                1 => return Target::None,
+                _ => {
+                    println!("That is not a valid option.");
+                    continue;
+                }
+            }
         }
     }
 
@@ -293,7 +396,7 @@ fn play_target(state: State) -> Option<usize> {
 
         // Check if user cancelled
         if target == 0 {
-            return None;
+            return Target::Cancel;
         }
 
         // Check if target is valid
@@ -309,7 +412,7 @@ fn play_target(state: State) -> Option<usize> {
         }
 
         // Check if target is self
-        if target - 1 == state.turn {
+        if target - 1 == state.turn && card.can_target_self() == false {
             println!("You cannot target yourself.");
             continue;
         }
@@ -324,7 +427,7 @@ fn play_target(state: State) -> Option<usize> {
     }
 
     
-    Some(target - 1)
+    Target::Player(target - 1)
 }
 
 fn play_card(state_: State, card: Card) -> (TurnResult, State) {
@@ -337,6 +440,22 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
             // Clone state for targetting
             let state_clone = state.clone();
 
+            match hand {
+                Card::RedQueen => {
+                    match card {
+                        Card::Time => {
+                            return (Err(PlayError::InvalidCard), state_);
+                        },
+                        Card::Executioner => {
+                            return (Err(PlayError::InvalidCard), state_);
+                        },
+                        _ => {}
+                    };
+                },
+                _ => {},
+            }
+            
+
             // Implement card effects
             match card {
                 Card::Alice => {
@@ -345,30 +464,25 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                     Ok(RoundStatus::Continue)
                 },
                 Card::RedQueen => {
-                    match hand {
-                        Card::Time => {
-                            Err(PlayError::InvalidCard)
-                        },
-                        Card::Executioner => {
-                            Err(PlayError::InvalidCard)
-                        },
-                        _ => {
-                            println!("You played the Red Queen.");
-                            Ok(RoundStatus::Continue)
-                        }
-                    }
+                    println!("You played the Red Queen.");
+                    Ok(RoundStatus::Continue)
                 },
                 Card::Time => {
-                    let target = play_target(state_clone);
-                    if target.is_none() {
-                        return (Ok(RoundStatus::Retry), state_);
+                    let target = play_target(state_clone, &card);
+                    match target {
+                        Target::Cancel => return (Ok(RoundStatus::Retry), state_),
+                        Target::None => {
+                            println!("You discard without a target.");
+                            Ok(RoundStatus::Continue)
+                        },
+                        Target::Player(target) => {
+                            println!("You swap hands with {}.", state.players[target]);
+                            let temp = state.hands[state.turn];
+                            state.hands[state.turn] = state.hands[target];
+                            state.hands[target] = temp;
+                            Ok(RoundStatus::Continue)
+                        },
                     }
-                    let target = target.unwrap();
-                    println!("You swap hands with {}.", state.players[target]);
-                    let temp = state.hands[state.turn];
-                    state.hands[state.turn] = state.hands[target];
-                    state.hands[target] = temp;
-                    Ok(RoundStatus::Continue)
                 },
                 Card::Executioner => {
                     println!("You draw two cards.");
@@ -420,108 +534,133 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                     Ok(RoundStatus::Continue)
                 },
                 Card::KnaveOfHearts => {
-                    let target = play_target(state_clone);
-                    if target.is_none() {
-                        return (Ok(RoundStatus::Retry), state_);
+                    let target = play_target(state_clone, &card);
+                    match target {
+                        Target::Cancel => return (Ok(RoundStatus::Retry), state_),
+                        Target::None => return (Err(PlayError::InvalidTargetPlayer), state_), // This should never happen
+                        Target::Player(target) => {
+                            // Makes target discard a card and draw a new one
+                            println!("{} discards {}.", state.players[target], state.hands[target].unwrap().name());
+                            let hand = state.hands[target].unwrap();
+                            state.discard[target].push(hand);
+                            state.hands[target] = None;
+                            if state.discard[target].last().unwrap() == &Card::Alice {
+                                println!("{} is out.", state.players[target]);
+                                state.out.push(target);
+                            } else {
+                                let card = state.deck.pop();
+                                println!("{} draws a card.", state.players[target]);
+                                if let Some(card) = card {
+                                    state.hands[target] = Some(card);
+                                } else {
+                                    println!("{} has no cards left to draw and is out.", state.players[target]);
+                                    state.out.push(target);
+                                }
+                            }
+                            Ok(RoundStatus::Continue)
+                        },
                     }
-                    let target = target.unwrap();
-                    
-                    // Makes target discard a card and draw a new one
-                    println!("{} discards {}.", state.players[target], state.hands[target].unwrap().name());
-                    let hand = state.hands[target].unwrap();
-                    state.discard[target].push(hand);
-                    state.hands[target] = None;
-                    if state.discard[target].last().unwrap() == &Card::Alice {
-                        println!("{} is out.", state.players[target]);
-                        state.out.push(target);
-                    } else {
-                        let card = state.deck.pop().unwrap();
-                        println!("{} draws a card.", state.players[target]);
-                        state.hands[target] = Some(card);
-                    }
-                    Ok(RoundStatus::Continue)
                 },
                 Card::Nobody => {
                     println!("You are protected.");
                     Ok(RoundStatus::Continue)
                 },
                 Card::Tweedies => {
-                    let target = play_target(state_clone);
-                    if target.is_none() {
-                        return (Ok(RoundStatus::Retry), state_);
+                    let target = play_target(state_clone, &card);
+                    match target {
+                        Target::Cancel => return (Ok(RoundStatus::Retry), state_),
+                        Target::None => {
+                            println!("You discard without a target.");
+                            Ok(RoundStatus::Continue)
+                        },
+                        Target::Player(target) => {
+                            println!("You compare hands with {}.", state.players[target]);
+                            let your_score = state.hands[state.turn].unwrap().value();
+                            let their_score = state.hands[target].unwrap().value();
+                            if your_score > their_score {
+                                println!("You win, {} is out.", state.players[target]);
+                                state.out.push(target);
+                            } else if your_score < their_score {
+                                println!("You lose, you are out.");
+                                state.out.push(state.turn);
+                            } else {
+                                println!("You tie.");
+                            }
+                            Ok(RoundStatus::Continue)
+                        },
                     }
-                    let target = target.unwrap();
-                    println!("You compare hands with {}.", state.players[target]);
-                    let your_score = state.hands[state.turn].unwrap().value();
-                    let their_score = state.hands[target].unwrap().value();
-                    if your_score > their_score {
-                        println!("You win.");
-                        state.discard[target].push(state.hands[target].unwrap());
-                        state.hands[target] = None;
-                    } else if your_score < their_score {
-                        println!("You lose.");
-                        state.discard[state.turn].push(state.hands[state.turn].unwrap());
-                        state.hands[state.turn] = None;
-                    } else {
-                        println!("You tie.");
-                    }
-                    Ok(RoundStatus::Continue)
                 },
                 Card::Wilkins => {
-                    let target = play_target(state_clone);
-                    if target.is_none() {
-                        return (Ok(RoundStatus::Retry), state_);
+                    let target = play_target(state_clone, &card);
+                    match target {
+                        Target::Cancel => return (Ok(RoundStatus::Retry), state_),
+                        Target::None => {
+                            println!("You discard without a target.");
+                            Ok(RoundStatus::Continue)
+                        },
+                        Target::Player(target) => {
+                            println!("{}'s hand is:\n{}", state.players[target], state.hands[target].unwrap().to_string()); 
+                            Ok(RoundStatus::Continue)
+                        },
                     }
-                    let target = target.unwrap();
-                    println!("{}'s hand is:\n{}", state.players[target], state.hands[target].unwrap().to_string()); 
-                    Ok(RoundStatus::Continue)
                 },
                 Card::Guard => {
-                    let target = play_target(state_clone);
-                    if target.is_none() {
-                        return (Ok(RoundStatus::Retry), state_);
-                    }
-                    let target = target.unwrap();
-                    println!("What card would you like to guess?");
-                    
-                    // List all cards except the Guard
-                    let card_list = list_cards();
-                    let cards = card_list.len();
-                    for card in card_list {
-                        if card != Card::Guard {
-                            println!("{}. {:?}", card.value(), card.to_string());
-                        }
-                    }
-
-                    // Get guess
-                    print!(": ");
-                    let mut guess: usize;
-                    loop {
-                        guess = read!();
-                        if guess != Card::Guard.value() && guess < cards.try_into().unwrap() {
-                            break;
-                        } else {
-                            println!("That is not a valid card.");
+                    let target = play_target(state_clone, &card);
+                    match target {
+                        Target::Cancel => return (Ok(RoundStatus::Retry), state_),
+                        Target::None => {
+                            println!("You discard without a target.");
+                            Ok(RoundStatus::Continue)
+                        },
+                        Target::Player(target) => {
+                            println!("What card would you like to guess?");
+                            
+                            // List all cards except the Guard
+                            let card_list = list_cards();
+                            let cards = card_list.len();
+                            for card in card_list {
+                                if card != Card::Guard {
+                                    println!("{}. {:?}", card.value(), card.to_string());
+                                }
+                            }
+        
+                            // Get guess
                             print!(": ");
-                        }
+                            let mut guess: usize;
+                            loop {
+                                guess = read!();
+                                if guess != Card::Guard.value() && guess < cards.try_into().unwrap() {
+                                    break;
+                                } else {
+                                    println!("That is not a valid card.");
+                                    print!(": ");
+                                }
+                            }
+                            let guess = list_cards()[(cards - guess - 1) as usize];
+                            if state.hands[target].unwrap() == guess {
+                                println!("You guessed {:?} correctly.", guess.name());
+                                state.discard[target].push(state.hands[target].unwrap());
+                                state.hands[target] = None;
+                            } else {
+                                println!("You guessed {:?}, which is incorrect.", guess.name());
+                            }
+                            Ok(RoundStatus::Continue)
+                        },
                     }
-                    let guess = list_cards()[(cards - guess - 1) as usize];
-                    if state.hands[target].unwrap() == guess {
-                        println!("You guessed {:?} correctly.", guess.name());
-                        state.discard[target].push(state.hands[target].unwrap());
-                        state.hands[target] = None;
-                    } else {
-                        println!("You guessed {:?}, which is incorrect.", guess.name());
-                    }
-                    Ok(RoundStatus::Continue)
                 },
                 Card::Dormouse => {
-                    if let Some(player) = state.dormouse {
-                        state.dormouse = None;
-                        println!("You discarded the second Dormouse, nor you or {} will be awarded a token.", state.players[player]);
-                    } else {
-                        state.dormouse = Some(state.turn);
-                        println!("You discarded the first Dormouse.");
+                    match state.dormouse {
+                        Some(player) if player == state.turn => {
+                            println!("You discarded the second Dormouse.");
+                        },
+                        Some(player) => {
+                            println!("You discarded the second Dormouse, nor you or {} will be awarded a token.", state.players[player]);
+                            state.dormouse = None;
+                        },
+                        None => {
+                            println!("You discarded the first Dormouse.");
+                            state.dormouse = Some(state.turn);
+                        },
                     }
                     Ok(RoundStatus::Continue)
                 }
@@ -535,6 +674,8 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
 }
 
 fn play_turn(state_: State) -> (RoundStatus, State) {
+    clear_screen();
+
     // Check if game is over
     if state_.out.len() == state_.players.len() - 1 {
         return (RoundStatus::End, state_);
@@ -591,6 +732,7 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
             match round_status {
                 RoundStatus::Continue => break,
                 RoundStatus::Retry => return play_turn(state_),
+                RoundStatus::TieBreaker => return (RoundStatus::TieBreaker, state),
                 RoundStatus::End => return (RoundStatus::End, state),
             };
         } else if let Err(play_error) = turn_result.0 {
@@ -657,13 +799,21 @@ fn main() {
             }
             
             match round_status.0 {
-                RoundStatus::Continue => continue,
+                RoundStatus::Continue => {
+                    println!("Type 1 to end turn.");
+                    loop {
+                        let i: i32 = read!();
+                        if i == 1 {
+                            break;
+                        }
+                    }
+                    continue;
+                },
                 RoundStatus::Retry => {
                     println!("Invalid choice. Try again.");
                     continue;
                 },
                 RoundStatus::TieBreaker => {
-                    println!("Tie breaker!");
                     state = play_tie_breaker(state);
                     break;
                 },
@@ -712,5 +862,39 @@ fn main() {
                 }
             }
         }
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_no_possible_play() {
+        let mut state = State {
+            deck: create_deck(),
+            discard: vec![vec![Card::Nobody], vec![Card::Nobody]],
+            players: vec!["Alice".to_string(), "Bob".to_string()],
+            out: Vec::new(),
+            hands: vec![Some(Card::Guard), Some(Card::Guard)],
+            tokens: vec![0, 0],
+            round: 0,
+            turn: 0,
+            dormouse: None,
+        };
+
+        let card = Card::Guard;
+        assert_eq!(no_possible_play(&state, &card), true);
+        
+        state.hands[0] = Some(Card::Time);
+        assert_eq!(no_possible_play(&state, &card), true);
+        
+        state.hands[0] = Some(Card::Guard);
+        let card = Card::Wilkins;
+        assert_eq!(no_possible_play(&state, &card), true);
+
+        let card = Card::RedQueen;
+        assert_eq!(no_possible_play(&state, &card), false);
     }
 }
