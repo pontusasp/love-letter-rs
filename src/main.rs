@@ -12,15 +12,15 @@
     *
     * Cards 2-6 players:
     * 9 - Alice - (1) If discarded you are out.
-    * 8 - Red Queen - (1) Must be discarded if you have (6) or (7) in your hand.
-    * 7 - Hatter - (2) Trade hands with another player.
-    * 6 - Knave of Hearts - (2) Draw 2 cards, pick one and place 2 cards on the bottom of the deck.
-    * 5 - Executioner - (2) Discard another player's hand.
+    * 8 - Red Queen - (1) Must be discarded if you have (7) Time or (5) Knave of Hearts in your hand
+    * 7 - Time - (1) Trade hands with another player.
+    * 6 - Executioner - (2) Draw 2 cards, pick one and place 2 cards on the bottom of the deck.
+    * 5 - Knave of Hearts - (2) Discard a player's hand (including your own) and make them draw a new card.
     * 4 - Nobody - (2) Protection until your next turn.
-    * 3 - Tweedle - (2) Compare hands with another player. The player with the lowest hand is out.
-    * 2 - White Queen - (2) Look at another player's hand.
-    * 1 - Guard - (5) Guess a player's hand and if correct, player is out.
-    * 0 - Dormouse - (2) Earn one token at the end of the round if no other dormouse have been discarded.
+    * 3 - Tweedies - (2) Compare hands with another player. Lowest hand is out.
+    * 2 - Wilkins - (2) Look at another player's hand.
+    * 1 - Guard - (6) Guess a player's hand and if correct, player is out.
+    * 0 - Dormouse - (2) Gain one token if no one else discarded a dormouse by the end of the round.
     *
     * Love Letter remake by Vladimir Li
     * Original game by Seiji Kanai
