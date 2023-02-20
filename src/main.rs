@@ -248,10 +248,6 @@ fn setup(last_state: Option<State>) -> State {
             let name: String = read!();
             players.push(name);
         }
-        println!("Names: {}", players[0]);
-        for i in 1..players.len() {
-            print!(", {}", players[i]);
-        }
         
         // Assign tokens
         for _ in 0..player_count {
@@ -289,6 +285,12 @@ fn setup(last_state: Option<State>) -> State {
         hands.push(Some(card));
     }
     
+    print!("\nPlayers: {}", players[0]);
+    for i in 1..players.len() {
+        print!(", {}", players[i]);
+    }
+    println!("");
+    
     // Create state
     let state = State {
         deck: deck,
@@ -302,7 +304,7 @@ fn setup(last_state: Option<State>) -> State {
         dormouse: dormouse,
     };
 
-    println!("Type 1 to start the game!");
+    println!("\nType 1 to start the game!");
     loop {
         let i: i32 = read!();
         if i == 1 {
@@ -491,7 +493,7 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                     println!("You draw two cards.");
                     let card1 = state.deck.pop().unwrap();
                     let card2 = state.deck.pop().unwrap();
-                    println!("You drew:\n1. {}\n2. {}.", card1.to_string(), card2.to_string());
+                    println!("You drew:\n1. {}\n2. {}", card1.to_string(), card2.to_string());
                     println!("Which card would you like to keep?");
                     let mut keep: i32;
                     loop {
@@ -641,9 +643,8 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                             }
                             let guess = list_cards()[(cards - guess - 1) as usize];
                             if state.hands[target].unwrap() == guess {
-                                println!("You guessed \"{}\" correctly.", guess.name());
-                                state.discard[target].push(state.hands[target].unwrap());
-                                state.hands[target] = None;
+                                println!("You guessed \"{}\" correctly, {} is out.", guess.name(), state.players[target]);
+                                state.out.push(target);
                             } else {
                                 println!("You guessed \"{}\", which is incorrect.", guess.name());
                             }
@@ -702,18 +703,18 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
     println!("Discard piles:");
     for (i, player) in state.players.iter().enumerate() {
         if state.discard[i].len() == 0 {
-            print!("\t{}: Empty", player);
+            print!("\t{}. {}: ", i + 1, player);
         } else {
-            print!("\t{}: {}", player, state.discard[i][0].name());
+            print!("\t{}. {}: {}", i + 1, player, state.discard[i][0].name());
             for card in state.discard[i].iter().skip(1) {
                 print!(", {}", card.name());
             }
         }
         println!("");
     }
-    print!("Tokens: {}: {}", state.players[0], state.tokens[0]);
+    print!("Tokens: {} {}", state.players[0], state.tokens[0]);
     for (i, player) in state.players.iter().skip(1).enumerate() {
-        print!(", {}: {}", player, state.tokens[i]);
+        print!(", {} {}", player, state.tokens[i]);
     }
     println!("\n");
     println!("Type 1 to draw a card.");
