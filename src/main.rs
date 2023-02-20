@@ -259,7 +259,7 @@ fn setup(last_state: Option<State>) -> State {
         players.remove(0);
         players.push(last_player);
 
-        let last_token = tokens[0];
+        let last_token = tokens[0].clone();
         tokens.remove(0);
         tokens.push(last_token);
     }
@@ -289,7 +289,7 @@ fn setup(last_state: Option<State>) -> State {
     for i in 1..players.len() {
         print!(", {}", players[i]);
     }
-    println!("");
+    println!(".");
     
     // Create state
     let state = State {
@@ -714,9 +714,9 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
     }
     print!("Tokens: {} {}", state.players[0], state.tokens[0]);
     for (i, player) in state.players.iter().skip(1).enumerate() {
-        print!(", {} {}", player, state.tokens[i]);
+        print!(", {} {}", player, state.tokens[i+1]);
     }
-    println!("\n");
+    println!(".\n");
     println!("Type 1 to draw a card.");
     let card1 = state.hands[state.turn].unwrap();
     loop {
