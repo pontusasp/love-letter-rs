@@ -248,12 +248,24 @@ fn setup(last_state: Option<State>) -> State {
             let name: String = read!();
             players.push(name);
         }
-        println!("Names: {:?}", players);
+        println!("Names: {}", players[0]);
+        for i in 1..players.len() {
+            print!(", {}", players[i]);
+        }
         
         // Assign tokens
         for _ in 0..player_count {
             tokens.push(0);
         }
+    } else {
+        // Rotate the players
+        let last_player = players[0].clone();
+        players.remove(0);
+        players.push(last_player);
+
+        let last_token = tokens[0];
+        tokens.remove(0);
+        tokens.push(last_token);
     }
     
     for _ in 0..players.len() {
@@ -289,15 +301,21 @@ fn setup(last_state: Option<State>) -> State {
         turn: turn,
         dormouse: dormouse,
     };
+
+    println!("Type 1 to start the game!");
+    loop {
+        let i: i32 = read!();
+        if i == 1 {
+            break;
+        }
+    }
     state
 }
 
 enum PlayError {
     InvalidCard,
     InvalidPlayer,
-    InvalidGuess,
     InvalidTargetPlayer,
-    InvalidTargetHand,
     InvalidHand,
 }
 enum RoundStatus {
@@ -312,27 +330,6 @@ enum Target {
     Player(usize),
     None,
     Cancel,
-}
-
-impl Target {
-    fn is_player(&self) -> bool {
-        match self {
-            Target::Player(_) => true,
-            _ => false,
-        }
-    }
-    fn is_none(&self) -> bool {
-        match self {
-            Target::None => true,
-            _ => false,
-        }
-    }
-    fn cancelled(&self) -> bool {
-        match self {
-            Target::Cancel => true,
-            _ => false,
-        }
-    }
 }
 
 fn no_possible_play(state: &State, card: &Card) -> bool {
@@ -431,6 +428,12 @@ fn play_target(state: State, card: &Card) -> Target {
 }
 
 fn play_card(state_: State, card: Card) -> (TurnResult, State) {
+    if state_.hands[state_.turn].is_none() {
+        return (Err(PlayError::InvalidHand), state_);
+    }
+    if state_.out.contains(&state_.turn) {
+        return (Err(PlayError::InvalidPlayer), state_);
+    }
     let mut state = state_.clone();
     let result = {
         if let Some(hand) = state.hands[state.turn].clone() {
@@ -488,7 +491,7 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                     println!("You draw two cards.");
                     let card1 = state.deck.pop().unwrap();
                     let card2 = state.deck.pop().unwrap();
-                    println!("You drew:\n1. {:?}\n2. {:?}.", card1.to_string(), card2.to_string());
+                    println!("You drew:\n1. {}\n2. {}.", card1.to_string(), card2.to_string());
                     println!("Which card would you like to keep?");
                     let mut keep: i32;
                     loop {
@@ -509,8 +512,8 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                             (hand, card1)
                         }
                     };
-                    println!("You will now place the following cards at the bottom of the deck:\n1. {:?}\n2. {:?}", hand.to_string(), card.to_string());
-                    println!("Which order would you like to place them in? (1 or 2):\n1. {:?} on top of {:?}\n2. {:?} on top of {:?}", hand.name(), card.name(), card.name(), hand.name());
+                    println!("You will now place the following cards at the bottom of the deck:\n1. {}\n2. {}", hand.to_string(), card.to_string());
+                    println!("Which order would you like to place them in? (1 or 2):\n1. \"{}\" on top of \"{}\"\n2. \"{}\" on top of \"{}\"", hand.name(), card.name(), card.name(), hand.name());
                     print!(": ");
                     let mut order: i32;
                     loop {
@@ -620,7 +623,7 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                             let cards = card_list.len();
                             for card in card_list {
                                 if card != Card::Guard {
-                                    println!("{}. {:?}", card.value(), card.to_string());
+                                    println!("{}. {}", card.value(), card.to_string());
                                 }
                             }
         
@@ -638,11 +641,11 @@ fn play_card(state_: State, card: Card) -> (TurnResult, State) {
                             }
                             let guess = list_cards()[(cards - guess - 1) as usize];
                             if state.hands[target].unwrap() == guess {
-                                println!("You guessed {:?} correctly.", guess.name());
+                                println!("You guessed \"{}\" correctly.", guess.name());
                                 state.discard[target].push(state.hands[target].unwrap());
                                 state.hands[target] = None;
                             } else {
-                                println!("You guessed {:?}, which is incorrect.", guess.name());
+                                println!("You guessed \"{}\", which is incorrect.", guess.name());
                             }
                             Ok(RoundStatus::Continue)
                         },
@@ -694,11 +697,25 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
     // Play turn
     let mut state = state_.clone();
     println!("\n\n================= {} =================", state.players[state.turn]);
-    println!("Round {}", state.round);
-    println!("Turn {}", state.turn + 1);
-    println!("Discard: {:?}", state.discard);
-    println!("Tokens: {:?}", state.tokens);
     println!("{}'s turn", state.players[state.turn]);
+    println!("Round {}", state.round);
+    println!("Discard piles:");
+    for (i, player) in state.players.iter().enumerate() {
+        if state.discard[i].len() == 0 {
+            print!("\t{}: Empty", player);
+        } else {
+            print!("\t{}: {}", player, state.discard[i][0].name());
+            for card in state.discard[i].iter().skip(1) {
+                print!(", {}", card.name());
+            }
+        }
+        println!("");
+    }
+    print!("Tokens: {}: {}", state.players[0], state.tokens[0]);
+    for (i, player) in state.players.iter().skip(1).enumerate() {
+        print!(", {}: {}", player, state.tokens[i]);
+    }
+    println!("\n");
     println!("Type 1 to draw a card.");
     let card1 = state.hands[state.turn].unwrap();
     loop {
@@ -708,10 +725,9 @@ fn play_turn(state_: State) -> (RoundStatus, State) {
         }
     }
     let card2 = state.deck.pop().unwrap();
-    println!("Your hand:\n{:?}\n{:?}", card1.to_string(), card2.to_string());
     println!("What would you like to do?");
-    println!("1. Discard/Play {:?}", card1.name());
-    println!("2. Discard/Play {:?}", card2.name());
+    println!("1. Discard/Play: {}", card1.to_string());
+    println!("2. Discard/Play: {}", card2.to_string());
     print!(": ");
     loop {
         let choice: i32 = read!();
